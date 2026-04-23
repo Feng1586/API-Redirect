@@ -18,16 +18,12 @@ class TaskRecordRepository:
         self,
         task_id: str,
         api_key_id: int,
-        user_id: int,
-        task_type: str,
         db: Session,
     ) -> TaskRecord:
         """创建任务记录"""
         record = TaskRecord(
             task_id=task_id,
             api_key_id=api_key_id,
-            user_id=user_id,
-            task_type=task_type,
         )
         db.add(record)
         db.commit()
@@ -46,10 +42,3 @@ class TaskRecordRepository:
             TaskRecord.task_id == task_id,
             TaskRecord.api_key_id == api_key_id,
         ).first()
-
-    def update_status(self, task_id: str, status: str, db: Session) -> None:
-        """更新任务状态"""
-        db.query(TaskRecord).filter(TaskRecord.task_id == task_id).update(
-            {"status": status}
-        )
-        db.commit()
