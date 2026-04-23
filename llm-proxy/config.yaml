@@ -1,0 +1,46 @@
+app:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+  secret_key: "c52b3444-75d5-4943-9f59-8b328af5ab66"
+  jwt_secret: "0ebf3852-47ca-4be4-9b6c-7878b2c3a8f6"
+
+database:
+  host: "192.168.2.101"
+  port: 3306
+  username: "llm_proxy"
+  password: "NaiCbtEDxtZ428Fw"
+  name: "llm_proxy"
+
+redis:
+  host: "192.168.2.101"
+  port: 6379
+  db: 0
+  password: "password"
+
+email:
+  resend_api_key: "re_EEJf4xLf_FkyzkuA8BjkY5mi4UnXyi8ko"
+  from_email: "noreply@mail.zdxzg.com"
+  from_name: "LLM Proxy"
+
+upstream:
+  base_url: "https://api.apimart.ai/v1"
+  gemini_base_url: "https://api.apimart.ai/v1beta/models"
+  api_key: "sk-An7bxzzKGHsqNs9b8U4ZGvXfmiL3utujmbPflSro0UUmU9Xu"
+  timeout: 120
+
+billing:
+  min_charge: 0.01
+  free_balance: 0.00
+
+session:
+  ttl: 86400
+  cookie_name: "llm_session"
+  cookie_secure: true
+  cookie_httponly: true
+  cookie_samesite: "lax"
+
+rate_limit:
+  verify_code_per_minute: 1
+  login_max_attempts: 5
+  login_lockout_minutes: 15

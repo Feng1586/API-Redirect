@@ -1,0 +1,63 @@
+请你根据以下描述，生成一份Python的后端接口项目大纲，要求包含项目文件目录命名、各个Python代码文件的命名、各个函数的命名（包括该函数属于哪个Python代码文件）、变量的命名、数据库的设计、各功能流程图。
+项目中的一些变量的配置，可以通过yaml文件，或者config文件进行存储，并非必须通过数据库进行，这个由你自行判断，使用合适的方式
+项目简介：这是一个大模型API中转站的项目，目的是通过中转上游提供的API接口，将其提供给国内的其他用户，并在其中抽取抽成实现盈利。项目的API设计应当遵守RESTful API的规范。并且项目为前端提供后端API接口的支持
+项目使用的Python包（不完全）：
+	FastAPI（接口），resend（邮件）
+项目希望使用的数据库：
+	Redis（临时存储），Mysql（长期存储）
+项目代码构成：
+	用户模块：
+		注册接口：用户需要提供邮箱账号、邮箱验证码、用户名、密码进行注册，发送邮箱验证码的实例代码如下。并且你需要为发送验证码设计一个标准的格式。并且当用户完成注册后，需要为其设置cookies并完成登录。相同的邮箱只能注册一个用户。本地需要保存邮箱服务商提供的RESEND_API_KEY。验证码有效期为5分钟，验证码请求频率是1分钟/次，且如果请求新的验证码老的验证码应当失效
+密码需要有强度要求：
+1、数字、大写字母、小写字母、字符至少需要包含3项 
+2、密码位数不能少于8位
+import os
+import resend
+
+resend.api_key = os.environ["RESEND_API_KEY"]
+
+params: resend.Emails.SendParams = {
+    "from": "Acme <onboarding@resend.dev>",
+    "to": ["delivered@resend.dev"],
+    "subject": "hello world",
+    "html": "<strong>it works!</strong>",
+}
+
+email = resend.Emails.send(params)
+print(email)
+		用户信息（profile）：当用户使用该接口时需要返回用户的余额、本月消费、每日消费（过去30天）、每日调用接口次数（过去30天）、Tokens每日用量（过去30天）、账号下的API-key（仅显示前8位和后4位）包括名称、创建日期、最新使用日期。账单包括订单编号、状态、金额、订单创建时间
+		登录接口：用户需要提供邮箱账号或用户名、密码进行登录，并且当用户成功登录后，需要为其设置cookies并完成登录。
+		退出登录接口：当用户使用该接口，需要读取当前的cookies并使其无效。
+		注销账户接口：用户需要提供邮箱验证码和账户密码进行注销账户，并且当用户成功注销账户后，应该将其用户	的信息进行归档，且该用户无法继续登录，并且其当前的cookies应该无效。
+		cookies相关的要求：cookies有效期为1天，且当用户使用cookies访问其他服务时，cookies的有效期应该自动续期为1天，当用户超过1天未使用服务时，cookies才应该失效，其他Cookies和Session的技术规范，签名加密方式以及续期逻辑，都按照普遍的方式
+
+	管理接口：
+		模型：管理员可以设置用户允许调用的模型名称，并且可以设置每个模型Tokens的价格（每1000Tokens）。可以设置上游提供的统一API-Key。可以设置上游的统一Base URL为：https://api.apimart.ai/v1
+		注：暂时不需要设计管理接口的路由，管理员将会通过软件直接管理数据库
+
+	日志系统：
+		当项目运行时，应该将有必须要输出的日志，通过自行编写的log模块进行输出，log模块的日志输出应该包含当前的系统时间（精确到毫秒），且日志需要按照严重程度区分为：DEBUG < INFO < WARN < ERROR < FATAL (及 OFF/ALL)
+
+	下游（用户）请求调用大模型：
+		创建API-Key：用户使用该接口时需要为API-Key命名，需要读取用户的cookies，如cookies有效，则为该用户创建一个API-Key。并返回API-Key的。API-Key格式为：sk-开头、32位随机字符串。每个用户最多可以同时有10个API-Key，如超出10个则拒绝创建，并返回错误
+		删除API-Key：用户可以删除账户下的API-Key
+		修改API-Key备注：用户可以修改账户下API-Key的备注
+
+		通用对话接口：该接口使用OpenAI Chat Completions API的格式提供给用户，该接口的上游端点同样兼容OpenAI Chat Completions API。接口为：/v1/chat/completions，当用户调用我们提供的转发端口后，需要获取用户使用的是什么模型，以及消耗的输入输出tokens的数量，并记录其用量以及为用户计费。并且当上游接口返回错误时，也需要返回给用户
+		Claude消息接口：该接口使用Claude Messages API的格式提供给用户，该接口的上游端点同样兼容Claude Messages API。接口为：/v1/messages，当用户调用我们提供的转发端口后，需要获取用户使用的是什么模型，以及消耗的输入输出tokens的数量，并记录其用量以及为用户计费。并且当上游接口返回错误时，也需要返回给用户
+		Gemini 原生格式接口：该接口使用 Google 原生 API 格式调用 Gemini 模型提供给用户，该接口的上游端点同样兼容Google 原生 API 格式。接口为：/v1beta/models/{model}:{method}，当用户调用我们提供的转发端口后，需要获取用户使用的是什么模型，以及消耗的输入输出tokens的数量，并记录其用量以及为用户计费。并且当上游接口返回错误时，也需要返回给用户
+		OpenAI 多模态响应接口：该接口使用OpenAI Responses API 格式提供给用户，该接口的上游端点同样兼容OpenAI Responses API 格式，接口为/v1/responses，当用户调用我们提供的转发端口后，需要获取用户使用的是什么模型，以及消耗的输入输出tokens的数量，并记录其用量以及为用户计费。并且当上游接口返回错误时，也需要返回给用户
+		注：用户在请求通用对话接口、Claude消息接口、Gemini 原生格式接口、OpenAI 多模态响应接口时应判断该用户账户余额是否小于等于0，如大于0则能够正常使用。余额可以为负数，但为负数时无法正常使用接口，需要返回错误，错误实例如下
+{
+  "error": {
+    "code": 402,
+    "message": "账户余额不足，请充值后再试",
+    "type": "payment_required"
+  }
+}
+用户API-Key的传递都需要遵守相对应接口的规范，例如通用对话接口使用的是OpenAI Chat Completions API的格式，那么API-Key的传递就要遵守OpenAI Chat Completions API的规范，其他接口以此类推。获取用户每次调用所消耗的tokens数量来源都根据上游返回的usage.prompt_tokens和usage.completion_tokens
+如用户每次消耗的费用小于0.01元，则记为0.01元
+
+	充值接口：充值接口计划使用PayPal提供的接口，但目前开发者暂时不会开发PayPal的支付接口，需要为充值接口预留路由，并尽可能的设计其项目大纲相关的部分
+		
+	其他补充信息：你可以自行设计错误码

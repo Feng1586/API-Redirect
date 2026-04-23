@@ -1,0 +1,45 @@
+app:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+  secret_key: "your-secret-key-change-me"
+  jwt_secret: "your-jwt-secret-change-me"
+
+database:
+  host: "localhost"
+  port: 3306
+  username: "root"
+  password: "password"
+  name: "llm_proxy"
+
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+  password: ""
+
+email:
+  resend_api_key: "${RESEND_API_KEY}"
+  from_email: "noreply@yourdomain.com"
+  from_name: "LLM Proxy"
+
+upstream:
+  base_url: "https://api.apimart.ai/v1"
+  api_key: "${UPSTREAM_API_KEY}"
+  timeout: 120
+
+billing:
+  min_charge: 0.01
+  free_balance: 0.00
+
+session:
+  ttl: 86400
+  cookie_name: "llm_session"
+  cookie_secure: true
+  cookie_httponly: true
+  cookie_samesite: "lax"
+
+rate_limit:
+  verify_code_per_minute: 1
+  login_max_attempts: 5
+  login_lockout_minutes: 15

@@ -1,0 +1,31 @@
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-multipart>=0.0.6
+httpx>=0.26.0
+
+# 数据库
+sqlalchemy>=2.0.25
+pymysql>=1.1.0
+redis>=5.0.1
+
+# 安全
+bcrypt>=4.1.2
+python-jose>=3.3.0
+
+# 邮件
+resend>=0.9.0
+
+# OpenAI 客户端
+openai>=1.12.0
+
+# 配置
+pyyaml>=6.0.1
+
+# 工具
+itsdangerous>=2.1.2
+
+# 测试
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
