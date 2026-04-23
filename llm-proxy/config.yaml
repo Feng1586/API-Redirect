@@ -44,3 +44,11 @@ rate_limit:
   verify_code_per_minute: 1
   login_max_attempts: 5
   login_lockout_minutes: 15
+
+paypal:
+  paypal_base_url: "https://api-m.sandbox.paypal.com"
+  client_id: "AS7GQHezUWUxl3EyN8XslUwLgtu3da8VGXYQOEFXdzgEhS0fgvxzNnNUa5hvHpVBSOupqm_yqjMuSiZ8"
+  client_secret: "EMQm_C7_rkDoTO9T_E_qRXJH6rKkWNGTW-iet9kP9cFv6iAHmCp3E7pB0QZbCK4M8zFFwmylzVFBeVxW"
+  # 开发测试时配置代理（WSL2 访问 Windows 宿主机代理）
+  # 格式: http://host:port，如 http://192.168.2.1:7890 或 http://host.docker.internal:7890
+  proxy: "http://127.0.0.1:7890"

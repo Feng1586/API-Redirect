@@ -69,6 +69,13 @@ class RateLimitConfig(BaseModel):
     login_lockout_minutes: int = 15
 
 
+class PayPalConfig(BaseModel):
+    paypal_base_url: str = "https://api-m.sandbox.paypal.com"
+    client_id: str = ""
+    client_secret: str = ""
+    proxy: str = ""
+
+
 class Settings(BaseSettings):
     app: AppConfig = AppConfig()
     database: DatabaseConfig = DatabaseConfig()
@@ -78,6 +85,7 @@ class Settings(BaseSettings):
     billing: BillingConfig = BillingConfig()
     session: SessionConfig = SessionConfig()
     rate_limit: RateLimitConfig = RateLimitConfig()
+    paypal: PayPalConfig = PayPalConfig()
 
     class Config:
         env_file = ".env"

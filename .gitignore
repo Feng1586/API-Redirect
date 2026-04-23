@@ -1,4 +1,5 @@
 __pycache__/
+paypal-rest-api-specifications/
 *.pyc
 .DS_Store
 .venv/lib64
