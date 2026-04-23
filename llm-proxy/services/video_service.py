@@ -40,7 +40,7 @@ class VideoService:
         2. 检查余额
         3. 检查模型是否启用
         4. 转发请求到上游 POST https://api.apimart.ai/v1/videos/generations
-        5. 如果上游返回200，则计费（单次调用固定费用）
+        5. 如果上游返回200，则计费（单价 × duration）
         6. 提取 task_id 存入 task_records 表
         7. 透传响应给客户端
         """
@@ -64,7 +64,7 @@ class VideoService:
                 media_type="application/json",
             )
 
-        # 3. 检查模型是否启用并获取费用（price_per_1k_input 即为单次调用固定费用）
+        # 3. 检查模型是否启用并获取费用（price_per_1k_input 即为每秒视频固定费用）
         prices = self.billing_service.get_model_prices(model, db)
         if prices is None:
             return Response(
@@ -72,7 +72,9 @@ class VideoService:
                 status_code=400,
                 media_type="application/json",
             )
-        call_cost = prices[0]  # 单次调用费用
+        unit_price = prices[0]  # 每秒视频费用
+        duration = body_json.get("duration", 1)  # 视频时长（秒），默认1
+        call_cost = unit_price * duration  # 总费用 = 单价 × 时长
 
         # 4. 替换 API-Key 并转发请求到上游
         upstream_url = f"{settings.upstream.base_url}/videos/generations"

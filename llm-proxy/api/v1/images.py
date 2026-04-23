@@ -40,3 +40,29 @@ async def create_image_generation(
     except Exception as e:
         logger.error(f"图片生成请求处理错误: {str(e)}")
         return error_response(40003, f"请求处理错误: {str(e)}")
+
+
+@router.post("/edits")
+async def create_image_edit(
+    request: Request,
+    auth: AuthenticatedUser = Depends(get_current_user_by_apikey),
+    db: Session = Depends(get_db),
+):
+    """
+    创建图片编辑任务
+
+    将请求转发至上游: POST https://api.apimart.ai/v1/images/edits
+    上游返回任务ID，用户可通过 /v1/tasks/{task_id} 查询进度
+    """
+    try:
+        request_body = await request.body()
+        logger.info(f"图片编辑请求 - 用户: {auth.user.id}, API Key ID: {auth.api_key_id}")
+        return await image_service.create_image_edit(
+            request_body=request_body,
+            user_id=auth.user.id,
+            api_key_id=auth.api_key_id,
+            db=db,
+        )
+    except Exception as e:
+        logger.error(f"图片编辑请求处理错误: {str(e)}")
+        return error_response(40003, f"请求处理错误: {str(e)}")
