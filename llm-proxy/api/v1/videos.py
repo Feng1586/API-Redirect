@@ -27,8 +27,6 @@ async def create_video_generation(
 
     将请求转发至上游: POST https://api.apimart.ai/v1/videos/generations
     上游返回任务ID，用户可通过 /v1/tasks/{task_id} 查询进度
-
-    TODO: 实现视频生成请求的完整转发逻辑
     """
     try:
         request_body = await request.body()
@@ -39,8 +37,6 @@ async def create_video_generation(
             api_key_id=auth.api_key_id,
             db=db,
         )
-    except NotImplementedError:
-        return error_response(50001, "视频生成接口尚未实现")
     except Exception as e:
         logger.error(f"视频生成请求处理错误: {str(e)}")
         return error_response(40003, f"请求处理错误: {str(e)}")

@@ -49,6 +49,8 @@ def init_model_configs():
             {"model_name": "claude-3-opus-20240229", "price_per_1k_input": 0.015, "price_per_1k_output": 0.075},
             {"model_name": "claude-3-sonnet-20240229", "price_per_1k_input": 0.003, "price_per_1k_output": 0.015},
             {"model_name": "gemini-pro", "price_per_1k_input": 0.001, "price_per_1k_output": 0.002},
+            # 图片/视频生成模型（price_per_1k_input 即为单次调用固定费用）
+            {"model_name": "gemini-3.1-flash-image-preview", "price_per_1k_input": 0.05, "price_per_1k_output": 0.05},
         ]
 
         for config in configs:

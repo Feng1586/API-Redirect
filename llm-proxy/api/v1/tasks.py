@@ -28,19 +28,15 @@ async def query_task(
 
     将请求转发至上游: GET https://api.apimart.ai/v1/tasks/{task_id}
     任务完成时上游响应中会包含结果URL
-
-    TODO: 实现任务查询请求的完整转发逻辑
     """
     try:
         logger.info(f"任务查询请求 - 用户: {auth.user.id}, 任务ID: {task_id}")
         return await task_service.query_task(
             task_id=task_id,
-            user_id=auth.user.id,
             api_key_id=auth.api_key_id,
+            request=request,
             db=db,
         )
-    except NotImplementedError:
-        return error_response(50001, "任务查询接口尚未实现")
     except Exception as e:
         logger.error(f"任务查询请求处理错误: {str(e)}")
         return error_response(40003, f"请求处理错误: {str(e)}")
