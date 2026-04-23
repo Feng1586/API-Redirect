@@ -19,6 +19,7 @@ from models.api_key import ApiKey
 from models.order import Order
 from models.model_config import ModelConfig
 from models.usage import UsageRecord
+from models.task_record import TaskRecord
 
 
 def init_db():
