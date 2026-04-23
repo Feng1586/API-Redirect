@@ -40,3 +40,31 @@ async def create_video_generation(
     except Exception as e:
         logger.error(f"视频生成请求处理错误: {str(e)}")
         return error_response(40003, f"请求处理错误: {str(e)}")
+
+
+@router.post("/{task_id}/remix")
+async def remix_video_generation(
+    task_id: str,
+    request: Request,
+    auth: AuthenticatedUser = Depends(get_current_user_by_apikey),
+    db: Session = Depends(get_db),
+):
+    """
+    视频续写（Remix）
+
+    将请求转发至上游: POST https://api.apimart.ai/v1/videos/{task_id}/remix
+    需要校验该 task_id 属于当前 API-Key
+    """
+    try:
+        request_body = await request.body()
+        logger.info(f"视频续写请求 - 用户: {auth.user.id}, API Key ID: {auth.api_key_id}, task_id: {task_id}")
+        return await video_service.remix_video_generation(
+            task_id=task_id,
+            request_body=request_body,
+            user_id=auth.user.id,
+            api_key_id=auth.api_key_id,
+            db=db,
+        )
+    except Exception as e:
+        logger.error(f"视频续写请求处理错误: {str(e)}")
+        return error_response(40003, f"请求处理错误: {str(e)}")
