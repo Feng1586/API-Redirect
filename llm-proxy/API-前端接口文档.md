@@ -10,9 +10,10 @@
 1. [通用说明](#1-通用说明)
 2. [认证接口](#2-认证接口)
 3. [用户接口](#3-用户接口)
-4. [充值接口（PayPal 支付）](#4-充值接口paypal-支付)
-5. [前端对接 PayPal 支付流程](#5-前端对接-paypal-支付流程)
-6. [附录：统一响应格式](#6-附录统一响应格式)
+4. [API-Key 管理](#4-api-key-管理)
+5. [充值接口（PayPal 支付）](#5-充值接口paypal-支付)
+6. [前端对接 PayPal 支付流程](#6-前端对接-paypal-支付流程)
+7. [附录：统一响应格式](#7-附录统一响应格式)
 
 ---
 
@@ -41,7 +42,7 @@
 
 ### 响应格式
 
-所有接口返回统一格式（详见 [附录](#6-附录统一响应格式)）：
+所有接口返回统一格式（详见 [附录](#7-附录统一响应格式)）：
 
 ```json
 {
@@ -272,11 +273,137 @@ Cookie: llm_session=xxxxxx
 
 ---
 
-## 4. 充值接口（PayPal 支付）
+## 4. API-Key 管理
 
-> 整个充值流程分两步走，详见 [第 5 节](#5-前端对接-paypal-支付流程)。
+> 用户用于调用 LLM API 的密钥。后端不存储明文密钥，前端看到即最终值。
 
-### 4.1 创建 PayPal 订单（Step 1）
+### 4.1 创建 API-Key
+
+**请求**
+
+```
+POST /apikey
+Cookie: llm_session=xxxxxx
+Content-Type: application/json
+
+{
+    "name": "生产环境密钥"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 密钥备注名称 |
+
+**响应（201 Created）**
+
+```json
+{
+    "code": 0,
+    "message": "创建成功",
+    "data": {
+        "id": 1,
+        "name": "生产环境密钥",
+        "api_key": "sk-a1b2c3d4e5f6...",
+        "created_at": "2026-04-24T12:00:00"
+    }
+}
+```
+
+> ⚠️ **密钥仅在创建时返回一次**，前端请立即展示给用户并提示保存。
+
+---
+
+### 4.2 获取 API-Key 列表
+
+**请求**
+
+```
+GET /apikey
+Cookie: llm_session=xxxxxx
+```
+
+**响应**
+
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": [
+        {
+            "id": 1,
+            "name": "生产环境密钥",
+            "key": "sk-a1b2c3d4e5f6...",
+            "created_at": "2026-04-24T12:00:00",
+            "last_used_at": null
+        }
+    ]
+}
+```
+
+> `last_used_at` 为 `null` 表示从未使用过。
+
+---
+
+### 4.3 修改 API-Key 备注
+
+**请求**
+
+```
+PATCH /apikey/{key_id}
+Cookie: llm_session=xxxxxx
+Content-Type: application/json
+
+{
+    "name": "测试环境密钥"
+}
+```
+
+**响应**
+
+```json
+{
+    "code": 0,
+    "message": "修改成功"
+}
+```
+
+---
+
+### 4.4 删除 API-Key
+
+**请求**
+
+```
+DELETE /apikey/{key_id}
+Cookie: llm_session=xxxxxx
+```
+
+**响应**
+
+```json
+{
+    "code": 0,
+    "message": "删除成功"
+}
+```
+
+**错误示例**
+
+```json
+{
+    "code": 40401,
+    "message": "API-Key不存在"
+}
+```
+
+---
+
+## 5. 充值接口（PayPal 支付）
+
+> 整个充值流程分两步走，详见 [第 6 节](#6-前端对接-paypal-支付流程)。
+
+### 5.1 创建 PayPal 订单（Step 1）
 
 在前端展示 PayPal 按钮时调用，后端会在 PayPal 创建一笔订单并返回支付链接。
 
@@ -330,7 +457,7 @@ Content-Type: application/json
 
 ---
 
-### 4.2 捕获订单（Step 2）
+### 5.2 捕获订单（Step 2）
 
 用户在 PayPal 页面完成支付后调用此接口，后端会：
 1. 调用 PayPal API **完成扣款**
@@ -396,7 +523,7 @@ Content-Type: application/json
 
 ---
 
-### 4.3 查询订单状态
+### 5.3 查询订单状态
 
 **请求**
 
@@ -429,7 +556,7 @@ Cookie: llm_session=xxxxxx
 
 ---
 
-## 5. 前端对接 PayPal 支付流程
+## 6. 前端对接 PayPal 支付流程
 
 ### 流程图
 
@@ -552,7 +679,7 @@ async function handlePaymentSuccess() {
 
 ---
 
-## 6. 附录：统一响应格式
+## 7. 附录：统一响应格式
 
 ### 成功响应
 
