@@ -38,7 +38,7 @@ session:
   cookie_name: "llm_session"
   cookie_secure: true
   cookie_httponly: true
-  cookie_samesite: "lax"
+  cookie_samesite: "none"
 
 rate_limit:
   verify_code_per_minute: 1

@@ -9,6 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from models.user import User
 from schemas.user import RegisterRequest, LoginRequest, DeleteAccountRequest, SendCodeRequest
+from app.config import settings
 from services.auth_service import AuthService
 from utils.response import success_response, error_response
 
@@ -50,7 +51,8 @@ async def register(
         value=data["session_id"],
         max_age=86400,
         httponly=True,
-        samesite="lax",
+        samesite=settings.session.cookie_samesite,
+        secure=settings.session.cookie_secure,
     )
     return success_response(201, "注册成功", {"user_id": data["user_id"]})
 
@@ -77,7 +79,8 @@ async def login(
         value=user.session_id,
         max_age=86400,
         httponly=True,
-        samesite="lax",
+        samesite=settings.session.cookie_samesite,
+        secure=settings.session.cookie_secure,
     )
     return success_response(200, "登录成功", {"user_id": user.id})
 
@@ -89,7 +92,11 @@ async def logout(
 ):
     """退出登录"""
     auth_service.logout(current_user.session_id)
-    response.delete_cookie(key="llm_session")
+    response.delete_cookie(
+        key="llm_session",
+        samesite=settings.session.cookie_samesite,
+        secure=settings.session.cookie_secure,
+    )
     return success_response(200, "退出登录成功")
 
 

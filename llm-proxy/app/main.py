@@ -23,14 +23,7 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.app.debug else None,
     )
 
-    # CORS 配置
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # CORS 由 Nginx 反向代理处理，FastAPI 不再配置 CORS 中间件
 
     # 注册路由
     app.include_router(api_router, prefix="/api")

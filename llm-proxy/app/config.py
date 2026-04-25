@@ -60,7 +60,7 @@ class SessionConfig(BaseModel):
     cookie_name: str = "llm_session"
     cookie_secure: bool = True
     cookie_httponly: bool = True
-    cookie_samesite: str = "lax"
+    cookie_samesite: str = "none"  # 跨域必须设为 none（配合 secure=True）
 
 
 class RateLimitConfig(BaseModel):
