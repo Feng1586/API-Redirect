@@ -36,11 +36,11 @@ class ImageService:
         创建图片生成任务
 
         流程：
-        1. 解析请求体，获取模型名称
+        1. 解析请求体，获取模型名称和 resolution/n
         2. 检查余额
-        3. 检查模型是否启用
+        3. 查询 image_model_configs 表获取模型配置和分辨率价格，计算费用
         4. 转发请求到上游 POST https://api.apimart.ai/v1/images/generations
-        5. 如果上游返回200，则计费（单价 × n）
+        5. 如果上游返回200，则计费（分辨率单价 × n）
         6. 提取 task_id 存入 task_records 表
         7. 透传响应给客户端
         """
@@ -64,17 +64,19 @@ class ImageService:
                 media_type="application/json",
             )
 
-        # 3. 检查模型是否启用并获取费用（price_per_1k_input 即为单张图片固定费用）
-        prices = self.billing_service.get_model_prices(model, db)
-        if prices is None:
+        # 3. 检查图片模型配置并计算费用
+        resolution = body_json.get("resolution")
+        n = body_json.get("n")
+        cost_result, used_resolution_or_error, used_n = (
+            self.billing_service.calculate_image_cost(model, resolution, n, db)
+        )
+        if cost_result is None:
             return Response(
-                content=json.dumps({"error": {"code": 40001, "message": "模型未启用或不存在", "type": "invalid_request"}}),
+                content=json.dumps({"error": {"code": 40001, "message": used_resolution_or_error, "type": "invalid_request"}}),
                 status_code=400,
                 media_type="application/json",
             )
-        unit_price = prices[0]  # 单张图片费用
-        n = body_json.get("n", 1)  # 生成张数，默认1
-        call_cost = unit_price * n  # 总费用 = 单价 × 张数
+        call_cost = cost_result
 
         # 4. 替换 API-Key 并转发请求到上游
         upstream_url = f"{settings.upstream.base_url}/images/generations"
@@ -160,11 +162,11 @@ class ImageService:
         创建图片编辑任务
 
         流程：
-        1. 解析请求体，获取模型名称
+        1. 解析请求体，获取模型名称和 resolution/n
         2. 检查余额
-        3. 检查模型是否启用
+        3. 查询 image_model_configs 表获取模型配置和分辨率价格，计算费用
         4. 转发请求到上游 POST https://api.apimart.ai/v1/images/edits
-        5. 如果上游返回200，则计费（单张费用 × n）
+        5. 如果上游返回200，则计费（分辨率单价 × n）
         6. 提取 task_id 存入 task_records 表
         7. 透传响应给客户端
         """
@@ -188,17 +190,19 @@ class ImageService:
                 media_type="application/json",
             )
 
-        # 3. 检查模型是否启用并获取费用（price_per_1k_input 即为单张图片固定费用）
-        prices = self.billing_service.get_model_prices(model, db)
-        if prices is None:
+        # 3. 检查图片模型配置并计算费用
+        resolution = body_json.get("resolution")
+        n = body_json.get("n")
+        cost_result, used_resolution_or_error, used_n = (
+            self.billing_service.calculate_image_cost(model, resolution, n, db)
+        )
+        if cost_result is None:
             return Response(
-                content=json.dumps({"error": {"code": 40001, "message": "模型未启用或不存在", "type": "invalid_request"}}),
+                content=json.dumps({"error": {"code": 40001, "message": used_resolution_or_error, "type": "invalid_request"}}),
                 status_code=400,
                 media_type="application/json",
             )
-        unit_price = prices[0]  # 单张图片费用
-        n = body_json.get("n", 1)  # 生成张数，默认1
-        call_cost = unit_price * n  # 总费用 = 单价 × 张数
+        call_cost = cost_result
 
         # 4. 替换 API-Key 并转发请求到上游
         upstream_url = f"{settings.upstream.base_url}/images/edits"

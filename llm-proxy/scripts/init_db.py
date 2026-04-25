@@ -21,6 +21,7 @@ from models.model_config import ModelConfig
 from models.usage import UsageRecord
 from models.task_record import TaskRecord
 from models.video_model_config import VideoModelConfig, VideoResolutionPrice
+from models.image_model_config import ImageModelConfig, ImageResolutionPrice
 
 
 def init_db():
@@ -112,7 +113,64 @@ def init_video_model_configs():
         print("视频模型配置初始化完成！")
 
 
+def init_image_model_configs():
+    """初始化图片模型配置"""
+    from sqlalchemy.orm import Session
+
+    with Session(engine) as session:
+        # 检查是否已有配置
+        existing = session.query(ImageModelConfig).first()
+        if existing:
+            print("图片模型配置已存在，跳过初始化")
+            return
+
+        # 图片模型配置: 模型名, [ (分辨率, 每张单价, 是否默认), ... ]
+        image_configs = [
+            {
+                "model_name": "dall-e-3",
+                "resolutions": [
+                    ("1024x1024", 0.04, 1),
+                    ("1024x1792", 0.08, 0),
+                    ("1792x1024", 0.08, 0),
+                ],
+            },
+            {
+                "model_name": "dall-e-2",
+                "resolutions": [
+                    ("1024x1024", 0.02, 1),
+                    ("512x512", 0.018, 0),
+                    ("256x256", 0.016, 0),
+                ],
+            },
+            {
+                "model_name": "gemini-3.1-flash-image-preview",
+                "resolutions": [
+                    ("default", 0.05, 1),
+                ],
+            },
+        ]
+
+        for config in image_configs:
+            resolutions = config.pop("resolutions")
+            model = ImageModelConfig(**config)
+            session.add(model)
+            session.flush()  # 获取 model.id
+
+            for resolution, price, is_default in resolutions:
+                resolution_price = ImageResolutionPrice(
+                    model_id=model.id,
+                    resolution=resolution,
+                    price_per_image=price,
+                    is_default=is_default,
+                )
+                session.add(resolution_price)
+
+        session.commit()
+        print("图片模型配置初始化完成！")
+
+
 if __name__ == "__main__":
     init_db()
     init_model_configs()
     init_video_model_configs()
+    init_image_model_configs()
