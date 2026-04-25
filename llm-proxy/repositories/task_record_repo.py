@@ -46,3 +46,15 @@ class TaskRecordRepository:
             TaskRecord.task_id == task_id,
             TaskRecord.api_key_id == api_key_id,
         ).first()
+
+    def update_status(
+        self, task_id: str, status: str, db: Session
+    ) -> Optional[TaskRecord]:
+        """更新任务状态"""
+        record = db.query(TaskRecord).filter(TaskRecord.task_id == task_id).first()
+        if not record:
+            return None
+        record.status = status
+        db.commit()
+        db.refresh(record)
+        return record
