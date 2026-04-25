@@ -19,11 +19,15 @@ class TaskRecordRepository:
         task_id: str,
         api_key_id: int,
         db: Session,
+        cost: float = 0,
+        status: str = "completed",
     ) -> TaskRecord:
         """创建任务记录"""
         record = TaskRecord(
             task_id=task_id,
             api_key_id=api_key_id,
+            cost=cost,
+            status=status,
         )
         db.add(record)
         db.commit()

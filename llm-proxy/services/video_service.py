@@ -123,9 +123,11 @@ class VideoService:
                             self.task_record_repo.create(
                                 task_id=str(task_id),
                                 api_key_id=api_key_id,
+                                cost=call_cost,
+                                status="completed",
                                 db=db,
                             )
-                            logger.info(f"视频生成任务记录已保存 - task_id: {task_id}")
+                            logger.info(f"视频生成任务记录已保存 - task_id: {task_id}, 费用: {call_cost}")
                 except Exception as parse_err:
                     logger.warning(f"解析上游响应提取 task_id 失败: {str(parse_err)}")
 
@@ -261,9 +263,11 @@ class VideoService:
                             self.task_record_repo.create(
                                 task_id=str(new_task_id),
                                 api_key_id=api_key_id,
+                                cost=call_cost,
+                                status="completed",
                                 db=db,
                             )
-                            logger.info(f"视频续写任务记录已保存 - task_id: {new_task_id}")
+                            logger.info(f"视频续写任务记录已保存 - task_id: {new_task_id}, 费用: {call_cost}")
                 except Exception as parse_err:
                     logger.warning(f"解析上游响应提取 task_id 失败: {str(parse_err)}")
 
