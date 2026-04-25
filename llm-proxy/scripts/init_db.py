@@ -20,6 +20,7 @@ from models.order import Order
 from models.model_config import ModelConfig
 from models.usage import UsageRecord
 from models.task_record import TaskRecord
+from models.video_model_config import VideoModelConfig, VideoResolutionPrice
 
 
 def init_db():
@@ -61,6 +62,57 @@ def init_model_configs():
         print("模型配置初始化完成！")
 
 
+def init_video_model_configs():
+    """初始化视频模型配置"""
+    from sqlalchemy.orm import Session
+
+    with Session(engine) as session:
+        # 检查是否已有配置
+        existing = session.query(VideoModelConfig).first()
+        if existing:
+            print("视频模型配置已存在，跳过初始化")
+            return
+
+        # 视频模型配置: 模型名, 默认时长(秒), [ (分辨率, 每秒单价, 是否默认), ... ]
+        video_configs = [
+            {
+                "model_name": "kling-1.5",
+                "default_duration": 5,
+                "resolutions": [
+                    ("720p", 0.02, 1),
+                    ("1080p", 0.04, 0),
+                ],
+            },
+            {
+                "model_name": "kling-1.5-pro",
+                "default_duration": 10,
+                "resolutions": [
+                    ("720p", 0.04, 1),
+                    ("1080p", 0.08, 0),
+                ],
+            },
+        ]
+
+        for config in video_configs:
+            resolutions = config.pop("resolutions")
+            model = VideoModelConfig(**config)
+            session.add(model)
+            session.flush()  # 获取 model.id
+
+            for resolution, price, is_default in resolutions:
+                resolution_price = VideoResolutionPrice(
+                    model_id=model.id,
+                    resolution=resolution,
+                    price_per_second=price,
+                    is_default=is_default,
+                )
+                session.add(resolution_price)
+
+        session.commit()
+        print("视频模型配置初始化完成！")
+
+
 if __name__ == "__main__":
     init_db()
     init_model_configs()
+    init_video_model_configs()

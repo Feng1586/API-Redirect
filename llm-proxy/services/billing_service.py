@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 from models.user import User
 from models.usage import UsageRecord
 from models.model_config import ModelConfig
+from models.video_model_config import VideoModelConfig, VideoResolutionPrice
 from repositories.usage_repo import UsageRepository
 from repositories.model_config_repo import ModelConfigRepository
+from repositories.video_model_repo import VideoModelRepository
 from app.config import settings
 from log.logger import get_logger
 
@@ -22,6 +24,7 @@ class BillingService:
     def __init__(self):
         self.usage_repo = UsageRepository()
         self.model_config_repo = ModelConfigRepository()
+        self.video_model_repo = VideoModelRepository()
 
     def calculate_cost(
         self, model_name: str, prompt_tokens: int, completion_tokens: int, db: Session
@@ -93,6 +96,63 @@ class BillingService:
             return None
 
         return float(config.price_per_1k_input), float(config.price_per_1k_output)
+
+    def get_video_model_config(
+        self, model_name: str, db: Session
+    ) -> Optional[VideoModelConfig]:
+        """
+        获取视频模型配置（含分辨率价格）
+        返回: VideoModelConfig object or None
+        """
+        config = self.video_model_repo.get_by_model_name(model_name, db)
+        if not config or not config.is_enabled:
+            return None
+        return config
+
+    def calculate_video_cost(
+        self, model_name: str, resolution: Optional[str], duration: Optional[int], db: Session
+    ) -> Tuple[Optional[float], Optional[str], Optional[int]]:
+        """
+        计算视频生成费用
+
+        参数:
+            model_name: 视频模型名称
+            resolution: 分辨率，None 则使用默认分辨率
+            duration: 视频秒数，None 则使用模型默认时长
+
+        返回:
+            (cost, used_resolution, used_duration) or (None, error_msg, None)
+            cost为None时表示出错，返回的字符串为错误信息
+        """
+        config = self.get_video_model_config(model_name, db)
+        if config is None:
+            return None, "模型未启用或不存在", None
+
+        # 确定分辨率价格
+        resolution_price = None
+        if resolution:
+            resolution_price = self.video_model_repo.get_resolution_price(
+                config.id, resolution, db
+            )
+            if resolution_price is None:
+                return None, f"不支持的分辨率: {resolution}", None
+
+        # 使用默认分辨率
+        if resolution_price is None:
+            resolution_price = self.video_model_repo.get_default_resolution(config.id, db)
+            if resolution_price is None:
+                return None, "模型未配置默认分辨率", None
+            used_resolution = resolution_price.resolution
+        else:
+            used_resolution = resolution
+
+        # 确定时长
+        used_duration = duration if duration else config.default_duration
+
+        # 计算费用
+        cost = float(resolution_price.price_per_second) * used_duration
+
+        return round(cost, 6), used_resolution, used_duration
 
     def check_balance(self, user_id: int, db: Session) -> Tuple[bool, float]:
         """

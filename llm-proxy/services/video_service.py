@@ -36,11 +36,11 @@ class VideoService:
         创建视频生成任务
 
         流程：
-        1. 解析请求体，获取模型名称
+        1. 解析请求体，获取模型名称和 resolution/duration
         2. 检查余额
-        3. 检查模型是否启用
+        3. 查询 video_model_configs 表获取模型配置和分辨率价格，计算费用
         4. 转发请求到上游 POST https://api.apimart.ai/v1/videos/generations
-        5. 如果上游返回200，则计费（单价 × duration）
+        5. 如果上游返回200，则计费（resolution单价 × duration）
         6. 提取 task_id 存入 task_records 表
         7. 透传响应给客户端
         """
@@ -64,17 +64,19 @@ class VideoService:
                 media_type="application/json",
             )
 
-        # 3. 检查模型是否启用并获取费用（price_per_1k_input 即为每秒视频固定费用）
-        prices = self.billing_service.get_model_prices(model, db)
-        if prices is None:
+        # 3. 检查视频模型配置并计算费用
+        resolution = body_json.get("resolution")
+        duration = body_json.get("duration")
+        cost_result, used_resolution_or_error, used_duration = (
+            self.billing_service.calculate_video_cost(model, resolution, duration, db)
+        )
+        if cost_result is None:
             return Response(
-                content=json.dumps({"error": {"code": 40001, "message": "模型未启用或不存在", "type": "invalid_request"}}),
+                content=json.dumps({"error": {"code": 40001, "message": used_resolution_or_error, "type": "invalid_request"}}),
                 status_code=400,
                 media_type="application/json",
             )
-        unit_price = prices[0]  # 每秒视频费用
-        duration = body_json.get("duration", 5)  # 视频时长（秒），默认5
-        call_cost = unit_price * duration  # 总费用 = 单价 × 时长
+        call_cost = cost_result
 
         # 4. 替换 API-Key 并转发请求到上游
         upstream_url = f"{settings.upstream.base_url}/videos/generations"
@@ -162,11 +164,11 @@ class VideoService:
 
         流程：
         1. 校验 task_id 所有权
-        2. 解析请求体，获取模型名称
+        2. 解析请求体，获取模型名称和 resolution/duration
         3. 检查余额
-        4. 检查模型是否启用
+        4. 查询 video_model_configs 表获取模型配置和分辨率价格，计算费用
         5. 转发请求到上游 POST https://api.apimart.ai/v1/videos/{task_id}/remix
-        6. 如果上游返回200，则计费（单价 × duration）
+        6. 如果上游返回200，则计费（resolution单价 × duration）
         7. 提取新 task_id 存入 task_records 表
         8. 透传响应给客户端
         """
@@ -201,17 +203,19 @@ class VideoService:
                 media_type="application/json",
             )
 
-        # 4. 检查模型是否启用并获取费用（price_per_1k_input 即为每秒视频固定费用）
-        prices = self.billing_service.get_model_prices(model, db)
-        if prices is None:
+        # 4. 检查视频模型配置并计算费用
+        resolution = body_json.get("resolution")
+        duration = body_json.get("duration")
+        cost_result, used_resolution_or_error, used_duration = (
+            self.billing_service.calculate_video_cost(model, resolution, duration, db)
+        )
+        if cost_result is None:
             return Response(
-                content=json.dumps({"error": {"code": 40001, "message": "模型未启用或不存在", "type": "invalid_request"}}),
+                content=json.dumps({"error": {"code": 40001, "message": used_resolution_or_error, "type": "invalid_request"}}),
                 status_code=400,
                 media_type="application/json",
             )
-        unit_price = prices[0]  # 每秒视频费用
-        duration = body_json.get("duration", 5)  # 视频时长（秒），默认5
-        call_cost = unit_price * duration  # 总费用 = 单价 × 时长
+        call_cost = cost_result
 
         # 5. 替换 API-Key 并转发请求到上游
         upstream_url = f"{settings.upstream.base_url}/videos/{task_id}/remix"
