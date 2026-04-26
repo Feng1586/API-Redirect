@@ -72,9 +72,6 @@ class BillingService:
         """
         cost = self.calculate_cost(model, prompt_tokens, completion_tokens, db)
 
-        # 扣除余额
-        # TODO: 调用 UserService.deduct_balance
-
         # 记录用量
         self.usage_repo.create(
             user_id=user_id,
