@@ -9,6 +9,7 @@ from api.router import api_router
 from app.config import settings
 from app.database import engine
 from log.logger import get_logger
+from middleware.session import SessionMiddleware
 
 logger = get_logger(__name__)
 
@@ -24,6 +25,9 @@ def create_app() -> FastAPI:
     )
 
     # CORS 由 Nginx 反向代理处理，FastAPI 不再配置 CORS 中间件
+
+    # Session 中间件：自动验证、续期、清理无效 Cookie
+    app.add_middleware(SessionMiddleware)
 
     # 注册路由
     app.include_router(api_router, prefix="/api")
