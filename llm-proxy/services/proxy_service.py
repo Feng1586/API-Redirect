@@ -4,7 +4,7 @@
 
 import json
 import httpx
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, AsyncIterator, Tuple
 from fastapi import Response
 from sqlalchemy.orm import Session
 from starlette.responses import StreamingResponse
@@ -13,6 +13,7 @@ from models.user import User
 from schemas.chat import ChatCompletionRequest, ClaudeMessageRequest
 from repositories.upstream_config_repo import UpstreamConfigRepository
 from services.billing_service import BillingService
+from services.user_service import UserService
 from app.config import settings
 from log.logger import get_logger
 
@@ -31,6 +32,7 @@ class ProxyService:
     def __init__(self):
         self.billing_service = BillingService()
         self.upstream_config_repo = UpstreamConfigRepository()
+        self._user_service = UserService()
 
     def get_upstream_config(self) -> Dict[str, str]:
         """获取上游配置"""
@@ -47,6 +49,66 @@ class ProxyService:
             status_code=status_code,
             media_type="application/json",
         )
+
+    def _check_balance_and_model(
+        self, user_id: int, model: str, db: Session
+    ) -> Optional[Response]:
+        """检查余额和模型是否启用，通过返回 None，失败返回错误 Response"""
+        is_sufficient, _ = self.billing_service.check_balance(user_id, db)
+        if not is_sufficient:
+            return self._build_error_response(402, "账户余额不足，请充值后再试", 402)
+        if self.billing_service.get_model_prices(model, db) is None:
+            return self._build_error_response(40001, "模型未启用或不存在")
+        return None
+
+    def _do_billing(
+        self,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        user_id: int,
+        api_key_id: int,
+        db: Session,
+    ) -> None:
+        """统一计费：计算费用 → 记录用量 → 扣除余额"""
+        if prompt_tokens <= 0 and completion_tokens <= 0:
+            return
+        cost = self.billing_service.calculate_cost(
+            model, prompt_tokens, completion_tokens, db
+        )
+        self.billing_service.usage_repo.create(
+            user_id=user_id,
+            api_key_id=api_key_id,
+            model_name=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            cost=cost,
+            db=db,
+        )
+        self._user_service.deduct_balance(user_id, cost, db)
+
+    # ---- Gemini token 提取 ----
+
+    @staticmethod
+    def _extract_gemini_tokens(data: dict) -> Tuple[int, int]:
+        """从 Gemini 响应 data 中提取 (prompt_tokens, candidates_tokens)"""
+        usage = data.get("usageMetadata", {})
+        return (
+            usage.get("promptTokenCount", 0),
+            usage.get("candidatesTokenCount", 0),
+        )
+
+    @staticmethod
+    def _estimate_gemini_tokens_from_body(body_json: dict) -> Tuple[int, int]:
+        """从请求体估算 token 数（无法从上游获取 usage 时的 fallback）"""
+        total_chars = 0
+        for content in body_json.get("contents", []):
+            for part in content.get("parts", []):
+                if "text" in part:
+                    total_chars += len(part["text"])
+        estimated_prompt = max(1, total_chars // 4)
+        return estimated_prompt, 100
 
 # region
     async def proxy_chat_completions(
@@ -72,17 +134,12 @@ class ProxyService:
         model = body_json.get("model")
         client_stream = body_json.get("stream")  # None/True/False
 
-        # 1. 检查余额
-        is_sufficient, _ = self.billing_service.check_balance(user.id, db)
-        if not is_sufficient:
-            return self._build_error_response(402, "账户余额不足，请充值后再试", 402)
+        # 1. 检查余额和模型
+        err = self._check_balance_and_model(user.id, model, db)
+        if err:
+            return err
 
-        # 2. 检查模型是否启用
-        prices = self.billing_service.get_model_prices(model, db)
-        if prices is None:
-            return self._build_error_response(40001, "模型未启用或不存在")
-
-        # 3. 获取上游配置并转发
+        # 2. 获取上游配置并转发
         config = self.get_upstream_config()
         url = f"{config['base_url']}/chat/completions"
         headers = {
@@ -144,23 +201,11 @@ class ProxyService:
                             data_str = stripped[6:]
                             if data_str == "[DONE]":
                                 # 流结束时计费
-                                if not billing_done and (prompt_tokens > 0 or completion_tokens > 0):
-                                    cost = self.billing_service.calculate_cost(
-                                        model, prompt_tokens, completion_tokens, db
+                                if not billing_done:
+                                    self._do_billing(
+                                        model, prompt_tokens, completion_tokens,
+                                        user_id, api_key_id, db,
                                     )
-                                    self.billing_service.usage_repo.create(
-                                        user_id=user_id,
-                                        api_key_id=api_key_id,
-                                        model_name=model,
-                                        prompt_tokens=prompt_tokens,
-                                        completion_tokens=completion_tokens,
-                                        total_tokens=prompt_tokens + completion_tokens,
-                                        cost=cost,
-                                        db=db,
-                                    )
-                                    from services.user_service import UserService
-                                    user_service = UserService()
-                                    user_service.deduct_balance(user_id, cost, db)
                                     billing_done = True
                                 yield b"data: [DONE]\n\n"
                                 continue
@@ -199,25 +244,10 @@ class ProxyService:
             if "usage" in response_data:
                 prompt_tokens = response_data["usage"].get("prompt_tokens", 0)
                 completion_tokens = response_data["usage"].get("completion_tokens", 0)
-                # 计算费用
-                cost = self.billing_service.calculate_cost(
-                    model, prompt_tokens, completion_tokens, db
+                self._do_billing(
+                    model, prompt_tokens, completion_tokens,
+                    user_id, api_key_id, db,
                 )
-                # 记录用量
-                self.billing_service.usage_repo.create(
-                    user_id=user_id,
-                    api_key_id=api_key_id,
-                    model_name=model,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=prompt_tokens + completion_tokens,
-                    cost=cost,
-                    db=db,
-                )
-                # 扣除余额
-                from services.user_service import UserService
-                user_service = UserService()
-                user_service.deduct_balance(user_id, cost, db)
 
             return Response(
                 content=upstream.content,
@@ -250,17 +280,12 @@ class ProxyService:
         model = body_json.get("model")
         client_stream = body_json.get("stream", False)
 
-        # 1. 检查余额
-        is_sufficient, _ = self.billing_service.check_balance(user.id, db)
-        if not is_sufficient:
-            return self._build_error_response(402, "账户余额不足，请充值后再试", 402)
+        # 1. 检查余额和模型
+        err = self._check_balance_and_model(user.id, model, db)
+        if err:
+            return err
 
-        # 2. 检查模型是否启用
-        prices = self.billing_service.get_model_prices(model, db)
-        if prices is None:
-            return self._build_error_response(40001, "模型未启用或不存在")
-
-        # 3. 获取上游配置并转发
+        # 2. 获取上游配置并转发
         config = self.get_upstream_config()
         url = f"{config['base_url']}/messages"
         headers = {
@@ -350,23 +375,11 @@ class ProxyService:
                             yield f"event: {event_line}\ndata: {data_content}\n\n".encode("utf-8")
 
                         # 流结束时计费
-                        if not billing_done and (prompt_tokens > 0 or completion_tokens > 0):
-                            cost = self.billing_service.calculate_cost(
-                                model, prompt_tokens, completion_tokens, db
+                        if not billing_done:
+                            self._do_billing(
+                                model, prompt_tokens, completion_tokens,
+                                user_id, api_key_id, db,
                             )
-                            self.billing_service.usage_repo.create(
-                                user_id=user_id,
-                                api_key_id=api_key_id,
-                                model_name=model,
-                                prompt_tokens=prompt_tokens,
-                                completion_tokens=completion_tokens,
-                                total_tokens=prompt_tokens + completion_tokens,
-                                cost=cost,
-                                db=db,
-                            )
-                            from services.user_service import UserService
-                            user_service = UserService()
-                            user_service.deduct_balance(user_id, cost, db)
                             billing_done = True
 
         return StreamingResponse(
@@ -396,25 +409,10 @@ class ProxyService:
             if "usage" in response_data:
                 prompt_tokens = response_data["usage"].get("input_tokens", 0)
                 completion_tokens = response_data["usage"].get("output_tokens", 0)
-                # 计算费用
-                cost = self.billing_service.calculate_cost(
-                    model, prompt_tokens, completion_tokens, db
+                self._do_billing(
+                    model, prompt_tokens, completion_tokens,
+                    user_id, api_key_id, db,
                 )
-                # 记录用量
-                self.billing_service.usage_repo.create(
-                    user_id=user_id,
-                    api_key_id=api_key_id,
-                    model_name=model,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=prompt_tokens + completion_tokens,
-                    cost=cost,
-                    db=db,
-                )
-                # 扣除余额
-                from services.user_service import UserService
-                user_service = UserService()
-                user_service.deduct_balance(user_id, cost, db)
 
             return Response(
                 content=upstream.content,
@@ -443,17 +441,12 @@ class ProxyService:
         4. 计费
         5. 透传响应（普通或流式）
         """
-        # 1. 检查余额
-        is_sufficient, _ = self.billing_service.check_balance(user.id, db)
-        if not is_sufficient:
-            return self._build_error_response(402, "账户余额不足，请充值后再试", 402)
+        # 1. 检查余额和模型
+        err = self._check_balance_and_model(user.id, model, db)
+        if err:
+            return err
 
-        # 2. 检查模型是否启用
-        prices = self.billing_service.get_model_prices(model, db)
-        if prices is None:
-            return self._build_error_response(40001, "模型未启用或不存在")
-
-        # 3. 获取上游配置并转发
+        # 2. 获取上游配置并转发
         config = self.get_upstream_config()
         url = f"{config['gemini_base_url']}/{model}:{method}"
         
@@ -504,17 +497,12 @@ class ProxyService:
         model = body_json.get("model")
         stream = body_json.get("stream", False)
 
-        # 1. 检查余额
-        is_sufficient, _ = self.billing_service.check_balance(user.id, db)
-        if not is_sufficient:
-            return self._build_error_response(402, "账户余额不足，请充值后再试", 402)
+        # 1. 检查余额和模型
+        err = self._check_balance_and_model(user.id, model, db)
+        if err:
+            return err
 
-        # 2. 检查模型是否启用
-        prices = self.billing_service.get_model_prices(model, db)
-        if prices is None:
-            return self._build_error_response(40001, "模型未启用或不存在")
-
-        # 3. 获取上游配置并转发
+        # 2. 获取上游配置并转发
         config = self.get_upstream_config()
         url = f"{config['base_url']}/responses"
         headers = {
@@ -574,25 +562,10 @@ class ProxyService:
                 usage = result["usage"]
                 input_tokens = usage.get("input_tokens", 0)
                 output_tokens = usage.get("output_tokens", 0)
-                # 计算费用
-                cost = self.billing_service.calculate_cost(
-                    model, input_tokens, output_tokens, db
+                self._do_billing(
+                    model, input_tokens, output_tokens,
+                    user_id, api_key_id, db,
                 )
-                # 记录用量
-                self.billing_service.usage_repo.create(
-                    user_id=user_id,
-                    api_key_id=api_key_id,
-                    model_name=model,
-                    prompt_tokens=input_tokens,
-                    completion_tokens=output_tokens,
-                    total_tokens=input_tokens + output_tokens,
-                    cost=cost,
-                    db=db,
-                )
-                # 扣除余额
-                from services.user_service import UserService
-                user_service = UserService()
-                user_service.deduct_balance(user_id, cost, db)
 
             return Response(
                 content=response.content,
@@ -634,23 +607,11 @@ class ProxyService:
                             data_str = stripped[6:]
                             if data_str == "[DONE]":
                                 # 流结束时计费
-                                if not billing_done and (input_tokens > 0 or output_tokens > 0):
-                                    cost = self.billing_service.calculate_cost(
-                                        model, input_tokens, output_tokens, db
+                                if not billing_done:
+                                    self._do_billing(
+                                        model, input_tokens, output_tokens,
+                                        user_id, api_key_id, db,
                                     )
-                                    self.billing_service.usage_repo.create(
-                                        user_id=user_id,
-                                        api_key_id=api_key_id,
-                                        model_name=model,
-                                        prompt_tokens=input_tokens,
-                                        completion_tokens=output_tokens,
-                                        total_tokens=input_tokens + output_tokens,
-                                        cost=cost,
-                                        db=db,
-                                    )
-                                    from services.user_service import UserService
-                                    user_service = UserService()
-                                    user_service.deduct_balance(user_id, cost, db)
                                     billing_done = True
                                 yield b"data: [DONE]\n\n"
                                 continue
@@ -741,55 +702,28 @@ class ProxyService:
                                     
                                     # 处理流结束信号
                                     if data_str == "[DONE]":
-                                        logger.info(f"收到结束信号 [DONE]，已处理 {line_count} 行，开始计费")
-                                        # 流结束时计费
-                                        if not billing_done and (prompt_tokens > 0 or candidates_tokens > 0):
-                                            logger.info(f"计费统计 - Prompt tokens: {prompt_tokens}, Candidates tokens: {candidates_tokens}")
-                                            # 计算费用 (使用prompt_tokens和candidates_tokens)
-                                            cost = self.billing_service.calculate_cost(
-                                                model, prompt_tokens, candidates_tokens, db
+                                        logger.info(f"收到[DONE]，行数={line_count}")
+                                        if not billing_done:
+                                            self._do_billing(
+                                                model, prompt_tokens, candidates_tokens,
+                                                user_id, api_key_id, db,
                                             )
-                                            logger.info(f"计算费用: {cost}")
-                                            # 记录用量
-                                            self.billing_service.usage_repo.create(
-                                                user_id=user_id,
-                                                api_key_id=api_key_id,
-                                                model_name=model,
-                                                prompt_tokens=prompt_tokens,
-                                                completion_tokens=candidates_tokens,
-                                                total_tokens=prompt_tokens + candidates_tokens,
-                                                cost=cost,
-                                                db=db,
-                                            )
-                                            # 扣除余额
-                                            from services.user_service import UserService
-                                            user_service = UserService()
-                                            user_service.deduct_balance(user_id, cost, db)
                                             billing_done = True
                                             logger.info("计费完成")
                                         else:
-                                            logger.warn(f"跳过计费 - billing_done: {billing_done}, prompt_tokens: {prompt_tokens}, candidates_tokens: {candidates_tokens}")
+                                            logger.warn(f"跳过计费: done={billing_done}, p={prompt_tokens}, c={candidates_tokens}")
                                         yield b"data: [DONE]\n\n"
                                         break
                                     
                                     try:
-                                        # 解析JSON数据
                                         data = json.loads(data_str)
-                                        logger.debug(f"解析JSON成功: 包含 keys {list(data.keys())}")
-                                        
-                                        # 解析usageMetadata
-                                        if "usageMetadata" in data:
-                                            usage = data["usageMetadata"]
-                                            old_prompt = prompt_tokens
-                                            old_candidates = candidates_tokens
-                                            prompt_tokens = usage.get("promptTokenCount", prompt_tokens)
-                                            candidates_tokens = usage.get("candidatesTokenCount", candidates_tokens)
-                                            if prompt_tokens != old_prompt or candidates_tokens != old_candidates:
-                                                logger.info(f"更新tokens统计: prompt={prompt_tokens} (was {old_prompt}), candidates={candidates_tokens} (was {old_candidates})")
-                                            else:
-                                                logger.debug(f"tokens未变化: prompt={prompt_tokens}, candidates={candidates_tokens}")
+                                        p, c = self._extract_gemini_tokens(data)
+                                        if p or c:
+                                            prompt_tokens, candidates_tokens = p, c
                                     except json.JSONDecodeError as e:
-                                        logger.warn(f"JSON解析失败: {e}, 数据: {data_str[:100]}")
+                                        logger.warn(f"JSON解析失败: {e}")
+                                    except Exception as e:
+                                        logger.error(f"处理数据失败: {e}")
                                         # 仍然转发原始数据
                                     except Exception as e:
                                         logger.error(f"处理数据失败: {e}")
@@ -818,85 +752,23 @@ class ProxyService:
                             
                             # 如果没有收到[DONE]信号，尝试计费
                             if not billing_done and line_count > 0:
-                                logger.warn("未收到标准[DONE]信号，尝试基于现有数据进行计费")
+                                logger.warn("未收到[DONE]，尝试fallback计费")
                                 if prompt_tokens > 0 or candidates_tokens > 0:
-                                    logger.info(f"基于已解析数据计费 - Prompt tokens: {prompt_tokens}, Candidates tokens: {candidates_tokens}")
-                                    try:
-                                        # 计算费用
-                                        cost = self.billing_service.calculate_cost(
-                                            model, prompt_tokens, candidates_tokens, db
-                                        )
-                                        logger.info(f"计算费用: {cost}")
-                                        # 记录用量
-                                        try:
-                                            self.billing_service.usage_repo.create(
-                                                user_id=user_id,
-                                                api_key_id=api_key_id,
-                                                model_name=model,
-                                                prompt_tokens=prompt_tokens,
-                                                completion_tokens=candidates_tokens,
-                                                total_tokens=prompt_tokens + candidates_tokens,
-                                                cost=cost,
-                                                db=db,
-                                            )
-                                            logger.info("用量记录创建成功")
-                                            # 扣除余额
-                                            from services.user_service import UserService
-                                            user_service = UserService()
-                                            user_service.deduct_balance(user_id, cost, db)
-                                            billing_done = True
-                                            logger.info("fallback计费完成")
-                                        except Exception as e:
-                                            logger.error(f"数据库操作失败: {e}")
-                                    except Exception as e:
-                                        logger.error(f"计费操作失败: {e}")
+                                    self._do_billing(
+                                        model, prompt_tokens, candidates_tokens,
+                                        user_id, api_key_id, db,
+                                    )
+                                    billing_done = True
+                                    logger.info("基于已解析数据的fallback计费完成")
                                 else:
-                                    # 尝试基于请求内容估算计费
-                                    logger.info("尝试基于请求内容估算计费")
-                                    try:
-                                        # 估算输入tokens（简单方法：按字符数估算）
-                                        if "contents" in request_body_json:
-                                            total_chars = 0
-                                            for content in request_body_json.get("contents", []):
-                                                for part in content.get("parts", []):
-                                                    if "text" in part:
-                                                        total_chars += len(part["text"])
-                                            # 简单估算：每4个字符约1个token
-                                            estimated_prompt_tokens = max(1, total_chars // 4)
-                                            estimated_candidates_tokens = 100  # 默认输出100个token
-                                            
-                                            logger.info(f"估算计费 - 输入字符: {total_chars}, 估算Prompt tokens: {estimated_prompt_tokens}, 默认Candidates tokens: {estimated_candidates_tokens}")
-                                            try:
-                                                # 计算费用
-                                                cost = self.billing_service.calculate_cost(
-                                                    model, estimated_prompt_tokens, estimated_candidates_tokens, db
-                                                )
-                                                logger.info(f"估算费用: {cost}")
-                                                # 记录用量
-                                                try:
-                                                    self.billing_service.usage_repo.create(
-                                                        user_id=user_id,
-                                                        api_key_id=api_key_id,
-                                                        model_name=model,
-                                                        prompt_tokens=estimated_prompt_tokens,
-                                                        completion_tokens=estimated_candidates_tokens,
-                                                        total_tokens=estimated_prompt_tokens + estimated_candidates_tokens,
-                                                        cost=cost,
-                                                        db=db,
-                                                    )
-                                                    logger.info("估算用量记录创建成功")
-                                                    # 扣除余额
-                                                    from services.user_service import UserService
-                                                    user_service = UserService()
-                                                    user_service.deduct_balance(user_id, cost, db)
-                                                    billing_done = True
-                                                    logger.info("估算计费完成")
-                                                except Exception as e:
-                                                    logger.error(f"估算数据库操作失败: {e}")
-                                            except Exception as e:
-                                                logger.error(f"估算计费操作失败: {e}")
-                                    except Exception as e:
-                                        logger.error(f"估算计费失败: {e}")
+                                    # 尝试基于请求内容估算
+                                    est_p, est_c = self._estimate_gemini_tokens_from_body(request_body_json)
+                                    self._do_billing(
+                                        model, est_p, est_c,
+                                        user_id, api_key_id, db,
+                                    )
+                                    billing_done = True
+                                    logger.info(f"估算计费完成: prompt≈{est_p}, candidates≈{est_c}")
                             
                             yield b"data: [DONE]\n\n"
                     else:
@@ -909,37 +781,18 @@ class ProxyService:
                             # 尝试解析usageMetadata
                             try:
                                 data_json = json.loads(response_text)
-                                if "usageMetadata" in data_json:
-                                    usage = data_json["usageMetadata"]
-                                    prompt_tokens = usage.get("promptTokenCount", 0)
-                                    candidates_tokens = usage.get("candidatesTokenCount", 0)
-                                    # 流结束时计费
-                                    if not billing_done and (prompt_tokens > 0 or candidates_tokens > 0):
-                                        logger.info(f"JSON响应中找到usageMetadata - Prompt tokens: {prompt_tokens}, Candidates tokens: {candidates_tokens}")
-                                        cost = self.billing_service.calculate_cost(
-                                            model, prompt_tokens, candidates_tokens, db
-                                        )
-                                        logger.info(f"计算费用: {cost}")
-                                        try:
-                                            self.billing_service.usage_repo.create(
-                                                user_id=user_id,
-                                                api_key_id=api_key_id,
-                                                model_name=model,
-                                                prompt_tokens=prompt_tokens,
-                                                completion_tokens=candidates_tokens,
-                                                total_tokens=prompt_tokens + candidates_tokens,
-                                                cost=cost,
-                                                db=db,
-                                            )
-                                            from services.user_service import UserService
-                                            user_service = UserService()
-                                            user_service.deduct_balance(user_id, cost, db)
-                                            billing_done = True
-                                            logger.info("JSON响应计费完成")
-                                        except Exception as e:
-                                            logger.error(f"JSON响应计费操作失败: {e}")
+                                p, c = self._extract_gemini_tokens(data_json)
+                                if p or c:
+                                    prompt_tokens, candidates_tokens = p, c
+                                if not billing_done:
+                                    self._do_billing(
+                                        model, prompt_tokens, candidates_tokens,
+                                        user_id, api_key_id, db,
+                                    )
+                                    billing_done = True
+                                    logger.info("JSON响应计费完成")
                                 else:
-                                    logger.warn("JSON响应中没有usageMetadata，需要fallback计费")
+                                    logger.warn("JSON响应: 已跳过计费(已有usageMetadata)")
                             except Exception as e:
                                 logger.error(f"解析JSON响应失败: {e}")
                             
@@ -984,28 +837,11 @@ class ProxyService:
             prompt_tokens = 0
             candidates_tokens = 0
             if "usageMetadata" in response_data:
-                usage = response_data["usageMetadata"]
-                prompt_tokens = usage.get("promptTokenCount", 0)
-                candidates_tokens = usage.get("candidatesTokenCount", 0)
-                # 计算费用
-                cost = self.billing_service.calculate_cost(
-                    model, prompt_tokens, candidates_tokens, db
+                prompt_tokens, candidates_tokens = self._extract_gemini_tokens(response_data)
+                self._do_billing(
+                    model, prompt_tokens, candidates_tokens,
+                    user_id, api_key_id, db,
                 )
-                # 记录用量
-                self.billing_service.usage_repo.create(
-                    user_id=user_id,
-                    api_key_id=api_key_id,
-                    model_name=model,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=candidates_tokens,
-                    total_tokens=prompt_tokens + candidates_tokens,
-                    cost=cost,
-                    db=db,
-                )
-                # 扣除余额
-                from services.user_service import UserService
-                user_service = UserService()
-                user_service.deduct_balance(user_id, cost, db)
 
             return Response(
                 content=upstream.content,

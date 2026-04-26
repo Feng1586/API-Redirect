@@ -1,7 +1,7 @@
 app:
   host: "0.0.0.0"
   port: 8000
-  debug: true
+  debug: false
   secret_key: "c52b3444-75d5-4943-9f59-8b328af5ab66"
   jwt_secret: "0ebf3852-47ca-4be4-9b6c-7878b2c3a8f6"
 
