@@ -2,8 +2,9 @@
 FastAPI 应用入口
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
 from api.router import api_router
 from app.config import settings
@@ -14,6 +15,16 @@ from middleware.session import SessionMiddleware
 logger = get_logger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan 事件处理器：替代已弃用的 on_event"""
+    # 应用启动时执行
+    logger.info("Application startup")
+    yield
+    # 应用关闭时执行
+    logger.info("Application shutdown")
+
+
 def create_app() -> FastAPI:
     """创建并配置 FastAPI 应用"""
     app = FastAPI(
@@ -22,23 +33,14 @@ def create_app() -> FastAPI:
         version="1.0.0",
         docs_url="/docs" if settings.app.debug else None,
         redoc_url="/redoc" if settings.app.debug else None,
+        lifespan=lifespan,  # 使用 lifespan 替代 on_event
     )
-
-    # CORS 由 Nginx 反向代理处理，FastAPI 不再配置 CORS 中间件
 
     # Session 中间件：自动验证、续期、清理无效 Cookie
     app.add_middleware(SessionMiddleware)
 
     # 注册路由
     app.include_router(api_router, prefix="/api")
-
-    @app.on_event("startup")
-    async def startup_event():
-        logger.info("Application startup")
-
-    @app.on_event("shutdown")
-    async def shutdown_event():
-        logger.info("Application shutdown")
 
     return app
 
