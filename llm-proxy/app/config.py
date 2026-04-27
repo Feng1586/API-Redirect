@@ -7,7 +7,7 @@ from functools import lru_cache
 
 import yaml
 from pydantic import BaseModel
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class AppConfig(BaseModel):
@@ -87,9 +87,10 @@ class Settings(BaseSettings):
     rate_limit: RateLimitConfig = RateLimitConfig()
     paypal: PayPalConfig = PayPalConfig()
 
-    class Config:
-        env_file = ".env"
-        env_nested_delimiter = "__"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_nested_delimiter="__",
+    )
 
 
 def load_config_from_yaml(config_path: str = "config.yaml") -> dict:
