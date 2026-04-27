@@ -52,3 +52,4 @@ paypal:
   # 开发测试时配置代理（WSL2 访问 Windows 宿主机代理）
   # 格式: http://host:port，如 http://192.168.2.1:7890 或 http://host.docker.internal:7890
   proxy: "http://127.0.0.1:7890"
+  

@@ -1,45 +1,225 @@
-app:
-  host: "0.0.0.0"
-  port: 8000
-  debug: false
-  secret_key: "your-secret-key-change-me"
-  jwt_secret: "your-jwt-secret-change-me"
+# ============================================================
+# LLM Proxy 配置文件
+# ============================================================
+# 配置说明：
+# 1. 所有配置项都可在环境变量中覆盖（使用 ${ENV_VAR} 语法）
+# 2. 生产环境请务必修改 secret_key 和密码相关配置
+# 3. 注释以 # 开头，配置项以键值对形式存在
+# ============================================================
 
+# ------------------------------------------------------------
+# 应用配置 (app)
+# ------------------------------------------------------------
+app:
+  # 服务监听地址
+  # 开发环境：0.0.0.0 或 127.0.0.1
+  # 生产环境：建议使用 0.0.0.0 配合反向代理
+  host: "0.0.0.0"
+
+  # 服务监听端口
+  # 本地开发：8000
+  # 生产环境：建议使用 80 或通过环境变量配置
+  port: 8000
+
+  # 调试模式
+  # 开发环境：true (启用详细日志和错误堆栈)
+  # 生产环境：false (关闭调试，隐藏错误详情)
+  debug: false
+
+  # 会话加密密钥
+  # 用途：对用户会话数据进行加密存储
+  # 要求：至少32位随机字符串，生产环境务必修改
+  # 可通过环境变量 SESSION__SECRET_KEY 覆盖
+  secret_key: "your-secret-key-change-me-in-production"
+
+  # JWT 签名密钥
+  # 用途：签发和验证 JWT Token（用于部分API认证）
+  # 要求：至少32位随机字符串，与 secret_key 不同
+  # 可通过环境变量 APP__JWT_SECRET 覆盖
+  jwt_secret: "your-jwt-secret-change-me-in-production"
+
+
+# ------------------------------------------------------------
+# 数据库配置 (database)
+# ------------------------------------------------------------
 database:
+  # 数据库主机地址
+  # 本地开发：localhost
+  # Docker部署：mysql（容器名）
+  # 云数据库：您的云数据库内网地址
   host: "localhost"
+
+  # 数据库端口
+  # MySQL 默认端口：3306
   port: 3306
+
+  # 数据库用户名
+  # 生产环境建议使用权限受限的专用用户
   username: "root"
-  password: "password"
+
+  # 数据库密码
+  # 强烈建议：生产环境使用强密码，不要使用默认值
+  # 可通过环境变量 DATABASE__PASSWORD 覆盖
+  password: "your-password-here"
+
+  # 数据库名称
+  # 需提前创建，初始化脚本会自动创建表结构
   name: "llm_proxy"
 
+
+# ------------------------------------------------------------
+# Redis 配置 (redis)
+# ------------------------------------------------------------
 redis:
+  # Redis 服务地址
+  # 本地开发：localhost
+  # Docker部署：redis（容器名）
   host: "localhost"
+
+  # Redis 端口
+  # 默认：6379
   port: 6379
+
+  # Redis 数据库编号
+  # 用于隔离不同用途的数据，0-15
+  # 0: 会话存储
+  # 1: 缓存（如需扩展可使用其他编号）
   db: 0
+
+  # Redis 密码
+  # 默认：空（无密码）
+  # 生产环境建议设置密码
+  # 可通过环境变量 REDIS__PASSWORD 覆盖
   password: ""
 
+
+# ------------------------------------------------------------
+# 邮件配置 (email)
+# ------------------------------------------------------------
 email:
+  # Resend API Key
+  # 用途：发送注册验证码、密码重置等邮件
+  # 获取地址：https://resend.com/api-keys
+  # 可通过环境变量 EMAIL__RESEND_API_KEY 覆盖
   resend_api_key: "${RESEND_API_KEY}"
+
+  # 发件人邮箱地址
+  # 必须是在 Resend 中验证过的域名
   from_email: "noreply@yourdomain.com"
+
+  # 发件人名称
+  # 显示在邮件客户端的发送者名称
   from_name: "LLM Proxy"
 
+
+# ------------------------------------------------------------
+# 上游服务配置 (upstream)
+# ------------------------------------------------------------
 upstream:
+  # 上游 API 基础地址
+  # 用于转发大模型请求（OpenAI、Claude、Gemini 等）
+  # 末尾不要加斜杠
   base_url: "https://api.apimart.ai/v1"
+
+  # 上游 API Key
+  # 用途：调用上游大模型服务
+  # 强烈建议：通过环境变量 UPSTREAM_API_KEY 配置
+  # 不要直接写在配置文件中
   api_key: "${UPSTREAM_API_KEY}"
+
+  # 请求超时时间（秒）
+  # 建议：文字生成 120s，图片/视频生成 300s
   timeout: 120
 
+  # Gemini 专用基础地址
+  # 如果 Gemini 使用不同端点，在此配置
+  gemini_base_url: ""
+
+
+# ------------------------------------------------------------
+# 计费配置 (billing)
+# ------------------------------------------------------------
 billing:
+  # 最小充值金额
+  # 用户每次充值不得低于此值（单位：美元）
   min_charge: 0.01
+
+  # 新用户赠送金额
+  # 注册时自动添加到账户的体验金（单位：美元）
+  # 默认 0 表示不赠送
   free_balance: 0.00
 
+
+# ------------------------------------------------------------
+# 会话配置 (session)
+# ------------------------------------------------------------
 session:
+  # 会话有效期（秒）
+  # 86400 = 24小时
+  # 用户在此期间无需重新登录（除非主动登出）
   ttl: 86400
+
+  # Cookie 名称
+  # 浏览器存储会话标识的 Cookie 名
   cookie_name: "llm_session"
+
+  # Cookie 安全属性
+  # true: 只在 HTTPS 连接下传输 Cookie
+  # 生产环境必须设为 true
+  # 开发环境可设为 false（配合 HTTP 测试）
   cookie_secure: true
+
+  # Cookie HttpOnly 属性
+  # true: JavaScript 无法读取 Cookie（防 XSS）
+  # 强烈建议保持 true
   cookie_httponly: true
+
+  # Cookie SameSite 属性
+  # none: 允许跨域携带 Cookie（需配合 cookie_secure=true）
+  # lax: 默认允许跨域携带（较宽松）
+  # strict: 完全禁止跨域携带
+  # 跨域 API 调用时设为 none，本域调用时可用 lax
   cookie_samesite: "none"
 
+
+# ------------------------------------------------------------
+# 限流配置 (rate_limit)
+# ------------------------------------------------------------
 rate_limit:
+  # 验证码发送频率限制
+  # 每分钟允许发送验证码的最大次数
+  # 防止恶意刷验证码
   verify_code_per_minute: 1
+
+  # 登录失败最大尝试次数
+  # 超过后账户将被临时锁定
   login_max_attempts: 5
+
+  # 登录锁定时长（分钟）
+  # 超过最大尝试次数后，账户被锁定的时长
   login_lockout_minutes: 15
+
+
+# ------------------------------------------------------------
+# PayPal 支付配置 (paypal)
+# ------------------------------------------------------------
+paypal:
+  # PayPal API 基础地址
+  # Sandbox 环境：https://api-m.sandbox.paypal.com
+  # 生产环境：https://api-m.paypal.com
+  paypal_base_url: "https://api-m.sandbox.paypal.com"
+
+  # PayPal Client ID
+  # 获取地址：https://developer.paypal.com
+  # 可通过环境变量 PAYPAL__CLIENT_ID 覆盖
+  client_id: "${PAYPAL_CLIENT_ID}"
+
+  # PayPal Client Secret
+  # 获取地址：同上
+  # 可通过环境变量 PAYPAL__CLIENT_SECRET 覆盖
+  client_secret: "${PAYPAL_CLIENT_SECRET}"
+
+  # 代理服务器地址（可选）
+  # 如果服务器无法直接访问 PayPal，在此配置代理
+  # 格式：http://user:password@proxyhost:port
+  proxy: ""

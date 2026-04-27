@@ -1,3 +1,4 @@
+llm-proxy/config.yaml
 __pycache__/
 paypal-rest-api-specifications/
 *.pyc
@@ -7049,3 +7050,4 @@ paypal-rest-api-specifications/
 .venv/lib/python3.12/site-packages/yaml/__pycache__/scanner.cpython-312.pyc
 .venv/lib/python3.12/site-packages/yaml/__pycache__/serializer.cpython-312.pyc
 .venv/lib/python3.12/site-packages/yaml/__pycache__/tokens.cpython-312.pyc
+llm-proxy/config.yaml
