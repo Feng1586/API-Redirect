@@ -68,6 +68,24 @@ class OrderRepository:
         db.commit()
         return True
 
+    def compare_and_set_status(
+        self, order_no: str, expected_status: str, new_status: str, db: Session
+    ) -> bool:
+        """CAS 更新订单状态：仅当当前状态 == expected_status 时才更新为 new_status
+
+        用于防止并发重复处理（如 Webhook 与用户回调竞态）。
+        返回 True 表示更新成功，False 表示状态已变更（被其他请求抢先处理）。
+        """
+        order = self.get_by_order_no(order_no, db)
+        if not order or order.status != expected_status:
+            return False
+
+        order.status = new_status
+        if new_status == "paid":
+            order.paid_at = datetime.utcnow()
+        db.commit()
+        return True
+
     def update_external_no(
         self, order_no: str, external_no: str, db: Session
     ) -> bool:

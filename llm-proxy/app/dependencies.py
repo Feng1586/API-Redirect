@@ -5,17 +5,20 @@
 from typing import Optional
 from dataclasses import dataclass
 
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from models.user import User
+from repositories.user_repo import UserRepository
 from services.auth_service import AuthService
 from services.apikey_service import ApiKeyService
+from log.logger import get_logger
 
-
+logger = get_logger(__name__)
 auth_service = AuthService()
 apikey_service = ApiKeyService()
+user_repo = UserRepository()
 
 
 @dataclass
@@ -26,23 +29,38 @@ class AuthenticatedUser:
 
 
 async def get_current_user(
-    session_id: Optional[str] = Cookie(None, alias="llm_session"),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> User:
-    """获取当前登录用户（基于 Session）"""
-    if not session_id:
+    """获取当前登录用户（基于 Session）
+
+    复用 SessionMiddleware 已验证的 request.state.session_data，
+    避免重复查询 Redis。仅需查库获取用户信息。
+    """
+    session_data = getattr(request.state, "session_data", None)
+    session_id = getattr(request.state, "session_id", None)
+
+    if not session_id or not session_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": 40102, "message": "未登录"},
         )
 
-    user = auth_service.validate_session(session_id, db)
-    if not user:
+    user_id = session_data.get("user_id")
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": 40102, "message": "Session无效"},
         )
 
+    user = user_repo.get_by_id(user_id, db)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": 40102, "message": "用户不存在"},
+        )
+
+    user.session_id = session_id
     return user
 
 

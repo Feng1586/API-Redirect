@@ -136,8 +136,10 @@ class RechargeService:
         gross_amount = float(first_capture.get("amount", 0))
         payer_info = capture_data.get("payer", {})
 
-        # 4. 更新订单状态为 paid
-        self.order_repo.update_status(order_no, "paid", db)
+        # 4. CAS 更新订单状态为 paid（防止并发重复处理）
+        if not self.order_repo.compare_and_set_status(order_no, "pending", "paid", db):
+            logger.warning(f"订单 {order_no} 状态已变更，跳过重复处理")
+            return False, "该订单已处理", None
 
         # 5. 为用户增加余额（使用订单金额，非扣除手续费后的净额）
         user = self.user_repo.get_by_id(order.user_id, db)
@@ -217,8 +219,10 @@ class RechargeService:
                 if order.status == "paid":
                     return True, "订单已处理"
 
-                # 更新订单状态
-                self.order_repo.update_status(custom_id, "paid", db)
+                # CAS 更新订单状态（防止与 capture_order 竞态）
+                if not self.order_repo.compare_and_set_status(custom_id, "pending", "paid", db):
+                    logger.info(f"Webhook: 订单 {custom_id} 状态已变更，跳过重复处理")
+                    return True, "订单已处理"
 
                 # 增加余额
                 amount = float(resource.get("amount", {}).get("value", 0))

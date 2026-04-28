@@ -26,33 +26,41 @@ class SessionMiddleware(BaseHTTPMiddleware):
         # 从 Cookie 获取 session_id
         session_id = request.cookies.get(settings.session.cookie_name)
 
-        # 先执行下游逻辑（路由处理 / 依赖注入）
+        # 1. 在请求处理前验证 Session，结果注入 request.state 供下游复用
+        session_data = None
+        if session_id:
+            try:
+                session_data = redis_client.get_session(session_id)
+            except Exception as e:
+                logger.warning(f"Redis session check failed, skipping: {e}")
+
+        request.state.session_id = session_id
+        request.state.session_data = session_data
+
+        # 2. 执行下游逻辑（路由处理 / 依赖注入）
         response = await call_next(request)
 
-        # 无 Cookie 则跳过
-        if not session_id:
-            return response
-
-        # 验证 Session 在 Redis 中是否仍然有效
-        session_data = redis_client.get_session(session_id)
-
-        if session_data:
-            # ✅ 有效：续期 Redis TTL + 更新响应 Cookie 过期时间
-            redis_client.refresh_session(session_id)
-            response.set_cookie(
-                key=settings.session.cookie_name,
-                value=session_id,
-                max_age=settings.session.ttl,
-                httponly=settings.session.cookie_httponly,
-                samesite=settings.session.cookie_samesite,
-                secure=settings.session.cookie_secure,
-            )
-        else:
-            # ❌ 已过期/不存在：清理客户端 Cookie
-            response.delete_cookie(
-                key=settings.session.cookie_name,
-                samesite=settings.session.cookie_samesite,
-                secure=settings.session.cookie_secure,
-            )
+        # 3. 仅做续期 / Cookie 清理（不再重复验证）
+        if session_id:
+            if session_data:
+                # ✅ 有效：续期 Redis TTL + 更新响应 Cookie 过期时间
+                redis_client.refresh_session(session_id)
+                response.set_cookie(
+                    key=settings.session.cookie_name,
+                    value=session_id,
+                    max_age=settings.session.ttl,
+                    httponly=settings.session.cookie_httponly,
+                    samesite=settings.session.cookie_samesite,
+                    secure=settings.session.cookie_secure,
+                    path="/",
+                )
+            else:
+                # ❌ 已过期/不存在：清理客户端 Cookie
+                response.delete_cookie(
+                    key=settings.session.cookie_name,
+                    path="/",
+                    samesite=settings.session.cookie_samesite,
+                    secure=settings.session.cookie_secure,
+                )
 
         return response
