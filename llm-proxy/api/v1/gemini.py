@@ -20,7 +20,7 @@ async def gemini_proxy(
     request: Request,
     model: str,
     method: str,
-    auth_user: AuthenticatedUser = Depends(get_current_user_by_apikey),
+    auth: AuthenticatedUser = Depends(get_current_user_by_apikey),
     db = Depends(get_db),
 ):
     """转发 Gemini 请求"""
@@ -33,8 +33,8 @@ async def gemini_proxy(
             model=model,
             method=method,
             request_body=request_body,
-            user=auth_user.user,
-            api_key_id=auth_user.api_key_id,
+            user=auth.user,
+            api_key_id=auth.api_key_id,
             db=db,
         )
     except Exception as e:

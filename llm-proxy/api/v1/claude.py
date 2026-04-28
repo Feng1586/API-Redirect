@@ -19,19 +19,19 @@ logger = get_logger(__name__)
 @router.post("")
 async def claude_messages(
     request: Request,
-    auth_user: AuthenticatedUser = Depends(get_current_user_by_apikey),
+    auth: AuthenticatedUser = Depends(get_current_user_by_apikey),
     db: Session = Depends(get_db),
 ):
     """转发 Claude Messages 请求"""
     try:
         # 记录请求信息
-        logger.info(f"Claude消息请求 - 用户: {auth_user.user.id}, API Key ID: {auth_user.api_key_id}")
+        logger.info(f"Claude消息请求 - 用户: {auth.user.id}, API Key ID: {auth.api_key_id}")
         
         request_body = await request.body()
         response = await proxy_service.proxy_claude_messages(
             request_body=request_body,
-            user=auth_user.user,
-            api_key_id=auth_user.api_key_id,
+            user=auth.user,
+            api_key_id=auth.api_key_id,
             db=db,
         )
         
