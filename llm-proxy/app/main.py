@@ -11,6 +11,7 @@ from app.config import settings
 from app.database import engine
 from log.logger import get_logger
 from middleware.session import SessionMiddleware
+from middleware.logging import LoggingMiddleware
 
 logger = get_logger(__name__)
 
@@ -38,6 +39,9 @@ def create_app() -> FastAPI:
 
     # Session 中间件：自动验证、续期、清理无效 Cookie
     app.add_middleware(SessionMiddleware)
+
+    # 日志中间件：记录所有请求的方法、路径、状态码、耗时
+    app.add_middleware(LoggingMiddleware)
 
     # 注册路由
     app.include_router(api_router, prefix="/api")
