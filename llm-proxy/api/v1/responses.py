@@ -25,6 +25,7 @@ async def openai_responses(
     """转发 OpenAI Responses 请求"""
     try:
         request_body = await request.body()
+        logger.info(f"OpenAI Responses请求 - 用户: {auth.user.id}, API Key ID: {auth.api_key_id}")
         return await proxy_service.proxy_openai_responses(
             request_body=request_body,
             user=auth.user,
