@@ -9,7 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_user_by_apikey, AuthenticatedUser
 from services.image_service import ImageService
 from log.logger import get_logger
-from utils.response import error_response
+from utils.response import openai_error_response
 
 router = APIRouter(prefix="/images", tags=["图片生成"])
 image_service = ImageService()
@@ -39,7 +39,7 @@ async def create_image_generation(
         )
     except Exception as e:
         logger.error(f"图片生成请求处理错误: {str(e)}")
-        return error_response(40003, f"请求处理错误: {str(e)}")
+        return openai_error_response(40003, f"请求处理错误: {str(e)}")
 
 
 @router.post("/edits")
@@ -65,4 +65,4 @@ async def create_image_edit(
         )
     except Exception as e:
         logger.error(f"图片编辑请求处理错误: {str(e)}")
-        return error_response(40003, f"请求处理错误: {str(e)}")
+        return openai_error_response(40003, f"请求处理错误: {str(e)}")

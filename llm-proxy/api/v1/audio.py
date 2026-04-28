@@ -1,5 +1,9 @@
 """
 音频处理接口（语音转文字、文字转语音）
+
+⚠️ 已取消开发 (DEPRECATED) ⚠️
+此模块已停止开发，所有接口保持未实现状态。
+如需恢复开发请移除此注释。
 """
 
 from fastapi import APIRouter, Depends, Request

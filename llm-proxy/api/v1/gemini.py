@@ -2,15 +2,17 @@
 Gemini 原生接口
 """
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request
 
 from app.dependencies import get_current_user_by_apikey, AuthenticatedUser
 from app.database import get_db
 from services.proxy_service import ProxyService
-from utils.response import error_response
+from log.logger import get_logger
+from utils.response import openai_error_response
 
 router = APIRouter(prefix="/beta/models", tags=["Gemini"])
 proxy_service = ProxyService()
+logger = get_logger(__name__)
 
 
 @router.post("/{model}:{method}")
@@ -36,12 +38,5 @@ async def gemini_proxy(
             db=db,
         )
     except Exception as e:
-        # 创建一个合适的错误响应，使用 FastAPI Response 而不是 error_response 函数
-        import json
-        from fastapi import Response
-        error_data = {"error": {"code": 40003, "message": f"请求处理错误: {str(e)}", "type": "upstream_error"}}
-        return Response(
-            content=json.dumps(error_data),
-            status_code=400,
-            media_type="application/json",
-        )
+        logger.error(f"Gemini请求处理错误: {str(e)}")
+        return openai_error_response(40003, f"请求处理错误: {str(e)}", error_type="upstream_error")

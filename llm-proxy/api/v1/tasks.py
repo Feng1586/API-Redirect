@@ -9,7 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_user_by_apikey, AuthenticatedUser
 from services.task_service import TaskService
 from log.logger import get_logger
-from utils.response import error_response
+from utils.response import openai_error_response
 
 router = APIRouter(prefix="/tasks", tags=["任务查询"])
 task_service = TaskService()
@@ -39,7 +39,7 @@ async def query_task(
         )
     except Exception as e:
         logger.error(f"任务查询请求处理错误: {str(e)}")
-        return error_response(40003, f"请求处理错误: {str(e)}")
+        return openai_error_response(40003, f"请求处理错误: {str(e)}")
 
 
 @router.post("/{task_id}/refund")
@@ -67,4 +67,4 @@ async def refund_task(
         )
     except Exception as e:
         logger.error(f"任务退款请求处理错误: {str(e)}")
-        return error_response(40003, f"请求处理错误: {str(e)}")
+        return openai_error_response(40003, f"请求处理错误: {str(e)}")

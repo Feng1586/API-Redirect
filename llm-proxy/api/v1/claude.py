@@ -9,7 +9,7 @@ from app.dependencies import get_current_user_by_apikey, AuthenticatedUser
 from app.database import get_db
 from services.proxy_service import ProxyService
 from log.logger import get_logger
-from utils.response import error_response
+from utils.response import claude_error_response
 
 router = APIRouter(prefix="/messages", tags=["Claude消息"])
 proxy_service = ProxyService()
@@ -40,4 +40,4 @@ async def claude_messages(
         return response
     except Exception as e:
         logger.error(f"Claude消息请求处理错误: {str(e)}")
-        return error_response(40003, f"请求处理错误: {str(e)}")
+        return claude_error_response(f"请求处理错误: {str(e)}", error_type="api_error")

@@ -9,7 +9,7 @@ from app.database import get_db
 from app.dependencies import get_current_user_by_apikey, AuthenticatedUser
 from services.video_service import VideoService
 from log.logger import get_logger
-from utils.response import error_response
+from utils.response import openai_error_response
 
 router = APIRouter(prefix="/videos", tags=["视频生成"])
 video_service = VideoService()
@@ -39,7 +39,7 @@ async def create_video_generation(
         )
     except Exception as e:
         logger.error(f"视频生成请求处理错误: {str(e)}")
-        return error_response(40003, f"请求处理错误: {str(e)}")
+        return openai_error_response(40003, f"请求处理错误: {str(e)}")
 
 
 @router.post("/{task_id}/remix")
@@ -67,4 +67,4 @@ async def remix_video_generation(
         )
     except Exception as e:
         logger.error(f"视频续写请求处理错误: {str(e)}")
-        return error_response(40003, f"请求处理错误: {str(e)}")
+        return openai_error_response(40003, f"请求处理错误: {str(e)}")
