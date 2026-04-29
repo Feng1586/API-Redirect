@@ -27,9 +27,9 @@ class ApiKeyRepository:
             .first()
         )
 
-    def get_by_api_key(self, api_key: str, db: Session) -> Optional[ApiKey]:
-        """根据实际 API-Key 获取"""
-        return db.query(ApiKey).filter(ApiKey.api_key == api_key).first()
+    def get_by_api_key_hash(self, api_key_hash: str, db: Session) -> Optional[ApiKey]:
+        """根据 API-Key 哈希值获取"""
+        return db.query(ApiKey).filter(ApiKey.api_key_hash == api_key_hash).first()
 
     def count_by_user(self, user_id: int, db: Session) -> int:
         """统计用户的 API-Key 数量"""
@@ -43,7 +43,7 @@ class ApiKeyRepository:
         self,
         user_id: int,
         key_name: str,
-        api_key: str,
+        api_key_hash: str,
         key_prefix: str,
         db: Session,
     ) -> ApiKey:
@@ -51,7 +51,7 @@ class ApiKeyRepository:
         key = ApiKey(
             user_id=user_id,
             key_name=key_name,
-            api_key=api_key,
+            api_key_hash=api_key_hash,
             key_prefix=key_prefix,
         )
         db.add(key)

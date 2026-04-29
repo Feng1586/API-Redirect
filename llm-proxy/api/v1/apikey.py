@@ -23,7 +23,7 @@ async def create_api_key(
     db: Session = Depends(get_db),
 ):
     """创建API-Key"""
-    success, message, api_key = apikey_service.create_api_key(
+    success, message, data = apikey_service.create_api_key(
         user_id=current_user.id,
         key_name=request.name,
         db=db,
@@ -31,12 +31,7 @@ async def create_api_key(
     if not success:
         return error_response(400, message, code=20001)
 
-    return success_response(201, "创建成功", {
-        "id": api_key.id,
-        "name": api_key.key_name,
-        "api_key": api_key.api_key,
-        "created_at": api_key.created_at.isoformat(),
-    })
+    return success_response(201, "创建成功", data)
 
 
 @router.get("")

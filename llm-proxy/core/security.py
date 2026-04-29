@@ -2,6 +2,8 @@
 安全模块（密码、加密）
 """
 
+import hashlib
+import hmac
 import secrets
 import uuid
 from typing import Optional
@@ -48,6 +50,30 @@ def sign_cookie(value: str, secret: Optional[str] = None) -> str:
     secret = secret or settings.app.secret_key
     serializer = URLSafeTimedSerializer(secret)
     return serializer.dumps(value)
+
+
+def hash_api_key(api_key: str) -> str:
+    """
+    对 API Key 进行哈希（SHA-256 + 盐）
+    用于数据库存储，防止明文泄露
+    输入: 明文 API Key (sk-xxx)
+    输出: 哈希值
+    """
+    salt = settings.app.secret_key or "default-salt"
+    return hmac.new(
+        salt.encode("utf-8"),
+        api_key.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def verify_api_key(plaintext: str, hashed: str) -> bool:
+    """
+    验证 API Key
+    输入: 明文 API Key, 数据库中的哈希值
+    输出: bool
+    """
+    return hmac.compare_digest(hash_api_key(plaintext), hashed)
 
 
 def verify_cookie_signature(value: str, signature: str, secret: Optional[str] = None) -> bool:

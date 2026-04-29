@@ -10,6 +10,7 @@ from models.user import User
 from models.api_key import ApiKey
 from repositories.apikey_repo import ApiKeyRepository
 from utils.token import generate_api_key
+from core.security import hash_api_key
 from core.limiter import rate_limiter
 from app.config import settings
 from log.logger import get_logger
@@ -34,11 +35,12 @@ class ApiKeyService:
 
     def create_api_key(
         self, user_id: int, key_name: str, db: Session
-    ) -> Tuple[bool, str, Optional[ApiKey]]:
+    ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
         创建API-Key
         检查: 用户API-Key数量 < 10
-        返回: (success, error_message, api_key)
+        返回: (success, error_message, {"id", "key_name", "api_key", "key_prefix", "created_at"})
+              注意: api_key 明文仅在此处返回，数据库中只存储哈希值
         """
         # 检查用户 API-Key 数量
         key_count = self.apikey_repo.count_by_user(user_id, db)
@@ -49,16 +51,25 @@ class ApiKeyService:
         api_key = generate_api_key()
         key_prefix = api_key[:8] + "****" + api_key[-4:]
 
+        # 哈希后存储（明文仅在创建时返回给用户，不入库）
+        api_key_hash = hash_api_key(api_key)
+
         # 存储
         new_key = self.apikey_repo.create(
             user_id=user_id,
             key_name=key_name,
-            api_key=api_key,
+            api_key_hash=api_key_hash,
             key_prefix=key_prefix,
             db=db,
         )
 
-        return True, "创建成功", new_key
+        return True, "创建成功", {
+            "id": new_key.id,
+            "key_name": new_key.key_name,
+            "api_key": api_key,
+            "key_prefix": new_key.key_prefix,
+            "created_at": new_key.created_at.isoformat() if new_key.created_at else None,
+        }
 
     def list_api_keys(self, user_id: int, db: Session) -> List[Dict[str, Any]]:
         """
@@ -103,9 +114,11 @@ class ApiKeyService:
     def validate_api_key(self, api_key: str, db: Session) -> Optional[ValidatedApiKey]:
         """
         验证API-Key
+        将输入的明文 Key 哈希后与数据库比对
         返回: ValidatedApiKey(user, api_key_id) or None
         """
-        key = self.apikey_repo.get_by_api_key(api_key, db)
+        api_key_hash = hash_api_key(api_key)
+        key = self.apikey_repo.get_by_api_key_hash(api_key_hash, db)
         if not key:
             return None
 

@@ -17,8 +17,8 @@ class ApiKey(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     user_id = Column(BigInteger, ForeignKey("users.id"), nullable=False, index=True)
     key_name = Column(String(100), nullable=False)  # API-Key名称
-    api_key = Column(String(50), nullable=False, unique=True, index=True)  # 实际API-Key
-    key_prefix = Column(String(20), nullable=False)  # 仅存储前8后4位
+    api_key_hash = Column(String(64), nullable=False, unique=True, index=True)  # API-Key哈希值(SHA-256)
+    key_prefix = Column(String(20), nullable=False)  # 仅存储前8后4位（用于展示）
     created_at = Column(DateTime, default=datetime.utcnow)
     last_used_at = Column(DateTime, nullable=True)
 
@@ -28,5 +28,5 @@ class ApiKey(Base):
 
     __table_args__ = (
         Index("idx_user_id", "user_id"),
-        Index("idx_api_key", "api_key"),
+        Index("idx_api_key_hash", "api_key_hash"),
     )
